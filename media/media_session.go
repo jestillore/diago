@@ -58,6 +58,11 @@ var (
 	// when a call is moved onto another relay, and most phones accept it.
 	SDESAllowKeyReuseOnAddressChange = false
 
+	// ListenUDP opens each media session's RTP and RTCP sockets. Replace it
+	// to set them up before they are used, e.g. to bind them to one network
+	// interface whatever the routing table says.
+	ListenUDP = net.ListenUDP
+
 	// RTPNAT options
 	RTPNATDisabled = 0
 	RTPNATSymetric = 1
@@ -873,13 +878,13 @@ func (s *MediaSession) createListeners(laddr *net.UDPAddr) error {
 
 func (s *MediaSession) listenRTPandRTCP(laddr *net.UDPAddr) error {
 	var err error
-	s.rtpConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: laddr.IP, Port: laddr.Port})
+	s.rtpConn, err = ListenUDP("udp", &net.UDPAddr{IP: laddr.IP, Port: laddr.Port})
 	if err != nil {
 		return err
 	}
 	laddr = s.rtpConn.LocalAddr().(*net.UDPAddr)
 
-	s.rtcpConn, err = net.ListenUDP("udp", &net.UDPAddr{IP: laddr.IP, Port: laddr.Port + 1})
+	s.rtcpConn, err = ListenUDP("udp", &net.UDPAddr{IP: laddr.IP, Port: laddr.Port + 1})
 	if err != nil {
 		s.rtpConn.Close()
 		return err
