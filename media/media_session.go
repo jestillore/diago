@@ -51,6 +51,13 @@ var (
 	// Experimental
 	RTPProfileSAVPDisable = false
 
+	// SDESAllowKeyReuseOnAddressChange accepts a re-offer that moves the
+	// remote media to a new address but keeps its SDES key. By default such
+	// an offer is refused. A media relay that copies each party's key onto
+	// the other leg (rtpengine's SRTP pass-through) makes exactly this offer
+	// when a call is moved onto another relay, and most phones accept it.
+	SDESAllowKeyReuseOnAddressChange = false
+
 	// RTPNAT options
 	RTPNATDisabled = 0
 	RTPNATSymetric = 1
@@ -593,7 +600,7 @@ func (s *MediaSession) RemoteSDP(sdpReceived []byte, offered bool) error {
 			inline := strings.TrimPrefix(vals[2], "inline:")
 			remoteTag, remoteKey = tag, inline
 			if s.remoteCtxSRTP != nil && s.remoteCtxSRTP.hasKey(inline) {
-				if !s.Raddr.IP.Equal(remoteAddr.IP) || s.Raddr.Port != remoteAddr.Port {
+				if !SDESAllowKeyReuseOnAddressChange && (!s.Raddr.IP.Equal(remoteAddr.IP) || s.Raddr.Port != remoteAddr.Port) {
 					return fmt.Errorf("SDES address change requires a new key")
 				}
 				break

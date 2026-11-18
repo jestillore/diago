@@ -5,6 +5,7 @@ package media
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net"
 	"testing"
@@ -793,4 +794,50 @@ func TestMediaSessionSDESUnusedRekey(t *testing.T) {
 	require.Same(t, active, receiver.previous)
 	rtcpRoundTrip(next)
 	rtpRoundTrip(peer, 2)
+}
+
+func TestRemoteSDP_SDESKeyReuseOnAddressChange(t *testing.T) {
+	// A re-offer that moves the remote media to a new address but keeps its
+	// SDES key, as a relay copying keys between legs makes when a call is
+	// moved onto another relay. Refused by default, accepted when allowed.
+	offer := func(port int) []byte {
+		return []byte(fmt.Sprintf(`v=0
+o=- 3948988145 3948988145 IN IP4 192.168.178.54
+s=Sip Go Media
+c=IN IP4 192.168.178.54
+t=0 0
+m=audio %d RTP/SAVP 0 8
+a=crypto:1 AES_CM_128_HMAC_SHA1_80 inline:8Dlz/SyzlAKCZwH49w5DX8S4pDa7Lw0n3LTI4t6Z
+a=sendrecv`, port))
+	}
+	newSession := func(t *testing.T) *MediaSession {
+		m := &MediaSession{
+			Codecs:    []Codec{CodecAudioAlaw, CodecAudioUlaw},
+			Laddr:     net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)},
+			Mode:      "sendrecv",
+			SecureRTP: 1,
+			SRTPAlg:   SRTPProfileAes128CmHmacSha1_80,
+		}
+		require.NoError(t, m.Init())
+		t.Cleanup(func() { m.Close() })
+		require.NoError(t, m.RemoteSDP(offer(25380), true))
+		return m
+	}
+
+	t.Run("refused by default", func(t *testing.T) {
+		m := newSession(t)
+		err := m.Fork().RemoteSDP(offer(25390), true)
+		require.ErrorContains(t, err, "SDES address change requires a new key")
+	})
+
+	t.Run("accepted when allowed", func(t *testing.T) {
+		old := SDESAllowKeyReuseOnAddressChange
+		SDESAllowKeyReuseOnAddressChange = true
+		t.Cleanup(func() { SDESAllowKeyReuseOnAddressChange = old })
+
+		m := newSession(t)
+		f := m.Fork()
+		require.NoError(t, f.RemoteSDP(offer(25390), true))
+		assert.Equal(t, 25390, f.Raddr.Port)
+	})
 }
